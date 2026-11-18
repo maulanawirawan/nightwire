@@ -4,39 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>nightwire</title>
-<meta name="description" content="A flyable night city of hosts in one HTML file. Every light is a packet. Click a building to scan it.">
+<meta name="description" content="A rain-soaked night city of hosts you can fly through, in one HTML file. Every light is a packet. Click a building to scan it; watch the city catch an intrusion.">
 <meta name="theme-color" content="#05040b">
 <style>
 html,body{margin:0;height:100%;background:#05040b;overflow:hidden;color:#cfe3ff;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
 .hud{position:fixed;pointer-events:none;letter-spacing:.05em;text-shadow:0 0 6px #000,0 0 2px #000;transition:opacity .4s}
-#tl{top:16px;left:18px}
+.hud a{pointer-events:auto;color:#8fe9ff;text-decoration:none}
+.hud a:hover{color:#39ff14}
+#tl{top:16px;left:18px;max-width:calc(100vw - 260px)}
 #tl b{font-size:15px;letter-spacing:.42em;color:#eafff0;font-weight:600}
 .sub{color:#8090a8}
-.k{color:#39ff14}
+.k{color:#39ff14}.r{color:#ff3355}
+#lm{color:#6f7c94;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 #tr{top:14px;right:16px;display:flex;gap:6px;pointer-events:auto}
 #bl{bottom:14px;left:18px;color:#6f7c94}
-#br{bottom:14px;right:18px;color:#5b6580;text-align:right;pointer-events:auto}
-#br a{color:#8aa0c8;text-decoration:none}
-#br a:hover{color:#39ff14}
+#br{bottom:14px;right:18px;color:#5b6580;text-align:right}
 button{font:inherit;color:#cfe3ff;background:#0a0d18cc;border:1px solid #28304a;padding:4px 10px;border-radius:3px;cursor:pointer;letter-spacing:.05em}
 button:hover,button.on{border-color:#39ff14;color:#39ff14}
+#ba:hover{border-color:#ff3355;color:#ff3355}
 .lab{position:fixed;left:0;top:0;pointer-events:none;white-space:nowrap;font-size:11px;padding:3px 8px;border:1px solid #39ff1455;background:#02050bd9;color:#bfffd0;letter-spacing:.04em;will-change:transform}
 .lab i{font-style:normal;color:#39ff14;margin-right:6px}
 .lab s{text-decoration:none;color:#7c8aa4;margin-left:6px}
 .lab.l0{border-color:#8090a855;color:#c9d3e6}.lab.l0 i{color:#8090a8}
 .lab.l1{border-color:#ffb02e66;color:#ffe2b0}.lab.l1 i{color:#ffb02e}
 .lab.l2{border-color:#00f0ff66;color:#c8fbff}.lab.l2 i{color:#00f0ff}
-.hidehud .hud{opacity:0}
+.lab.atk{border-color:#ff3355aa;color:#ffd0d8;background:#1a0309e0}.lab.atk i{color:#ff3355}
+.hidehud .hud{opacity:0}.hidehud .hud *{pointer-events:none}
 #err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:24px;color:#8090a8}
-@media (max-width:640px){#bl{display:none}#tl b{font-size:13px}}
+@media (max-width:640px){#bl{display:none}#tl b{font-size:13px}#tl{max-width:calc(100vw - 36px);top:58px}}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="tl" class="hud"><b>NIGHTWIRE</b><br><span class="sub">a city of hosts · every light is a packet</span><br><span class="sub">proofs <span id="pc" class="k">0</span> / <span id="hc">0</span> hosts</span></div>
-<div id="tr" class="hud"><button id="bm">tour</button><button id="bs">sound: off</button></div>
-<div id="bl" class="hud">drag to look · WASD / arrows fly · shift boost · E/Q up/down<br>click a building to scan it · C tour · H hide · M sound</div>
+<div id="tl" class="hud"><b>NIGHTWIRE</b><br><span class="sub">a city of hosts · every light is a packet</span><br><span class="sub">proofs <span id="pc" class="k">0</span> / <span id="hc">0</span> hosts · intrusions blocked <span id="ic" class="r">0</span></span><span id="lm"></span></div>
+<div id="tr" class="hud"><button id="bm">tour</button><button id="ba">attack</button><button id="bs">sound: off</button></div>
+<div id="bl" class="hud">drag to look · WASD / arrows fly · shift boost · E/Q up/down · click a building to scan it<br>X launch an attack · R rain · C tour · H hide · M sound</div>
 <div id="br" class="hud">one html file · no libraries · no assets<br><a href="https://github.com/maulanawirawan/nightwire" target="_blank" rel="noopener">github.com/maulanawirawan/nightwire</a></div>
 <div id="err">nightwire needs WebGL2.<br>Try a recent Chrome, Edge, Firefox or Safari.</div>
 <script>
@@ -49,6 +52,7 @@ const gl = cv.getContext('webgl2', {antialias: false, alpha: false, depth: true,
 if (!gl) { document.getElementById('err').style.display = 'flex'; return; }
 const HDR = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
 if (CAPTURE) document.body.classList.add('hidehud');
+const $ = id => document.getElementById(id);
 
 /* ---------- seeded randomness ---------- */
 let seed = 20261119;
@@ -57,9 +61,30 @@ const h2 = (x, y) => { const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; r
 const vn = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
   const a = h2(xi, yi), b = h2(xi + 1, yi), c = h2(xi, yi + 1), d = h2(xi + 1, yi + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; };
 
+/* ---------- real detections: every verified scan resolves to a CVE template merged upstream ---------- */
+let DET = [[17890, 'CVE-2026-88995', 'Bookit'], [17883, 'CVE-2026-81197', 'MasterStudy LMS'], [17882, 'CVE-2026-87916', 'WPBot'], [17853, 'CVE-2026-75918', 'phpMyFAQ'],
+  [17852, 'CVE-2026-19715', 'WP OAuth Server'], [17848, 'CVE-2026-86538', 'knowns'], [17845, 'CVE-2026-104476', 'Backdrop CMS'], [17821, 'CVE-2026-129131', 'Gameyfin'],
+  [17820, 'CVE-2026-121853', 'AppPresser'], [17805, 'CVE-2026-64858', 'vulnerability-operator'], [17797, 'CVE-2026-119302', 'NotificationX'], [17748, 'CVE-2026-125357', 'Munin munin-httpd'],
+  [17743, 'CVE-2026-120409', 'All-in-One Video Gallery'], [17727, 'CVE-2026-102657', 'esm.sh web handler'], [17722, 'CVE-2026-124027', 'ChatWiki'], [17720, 'CVE-2026-62850', 'FreeScout'],
+  [17719, 'CVE-2026-123655', 'Moodle'], [17691, 'CVE-2026-115574', 'Zulip Server'], [17685, 'CVE-2026-118523', 'EventPrime'], [17676, 'CVE-2026-120442', 'ape-volo-admin'],
+  [17675, 'CVE-2026-120446', 'madong-admin-saas'], [17673, 'CVE-2026-119485', 'Dokan Lite'], [17672, 'CVE-2026-120597', 'Welcart e-Commerce'], [17669, 'CVE-2026-119495', 'Better Search'],
+  [17651, 'CVE-2026-96654', 'Plex Media Server']];
+if (!CAPTURE) fetch('https://api.github.com/search/issues?per_page=100&q=' + encodeURIComponent('author:maulanawirawan type:pr is:merged repo:projectdiscovery/nuclei-templates'))
+  .then(r => r.ok ? r.json() : null).then(d => {
+    if (!d || !d.items) return;
+    const out = [];
+    for (const it of d.items) {
+      const m = it.title.match(/(CVE-\d{4}-\d+)(?:\.yaml)?\s*[-:–]?\s*(.*)/i); if (!m) continue;
+      let name = m[2].split(/\s(?:<=?|>=?|-|unauthenticated|missing|authentication|via)\s/i)[0].trim();
+      if (name.length > 26) name = name.slice(0, 25) + '…';
+      out.push([it.number, m[1].toUpperCase(), name || m[1]]);
+    }
+    if (out.length >= 5) DET = out;
+  }).catch(() => {});
+
 /* ---------- city ---------- */
 const N = 40, C = 4, G = N * 2;
-const PAL = new Float32Array([.22, 1, .08,  0, .94, 1,  1, .16, .55,  .56, .2, 1,  .55, .64, .85]);
+const PAL = new Float32Array([.22, 1, .08,  0, .94, 1,  1, .16, .55,  .56, .2, 1,  .55, .64, .85,  1, .07, .16]);
 const grid = new Int32Array(G * G).fill(-1);
 const B = [];
 const street = (i, j) => { const mi = ((i % 4) + 4) % 4, mj = ((j % 4) + 4) % 4; return mi === 0 || mj === 0 || i === 5 || j === -7; };
@@ -84,7 +109,7 @@ for (let j = -N; j < N; j++) for (let i = -N; i < N; i++) {
 const SP = B.length;
 B.push({x: 0, z: 0, w: 7, d: 7, h: 96, col: 0, s: .5, kind: 2, i: 0, j: 0});
 for (let j = -1; j <= 0; j++) for (let i = -1; i <= 0; i++) grid[(j + N) * G + (i + N)] = SP;
-document.getElementById('hc').textContent = B.length.toLocaleString('en');
+$('hc').textContent = B.length.toLocaleString('en');
 
 /* ---------- routes (packets fly between rooftops) ---------- */
 const tall = B.filter(b => b.h > 14 && b.kind !== 2);
@@ -108,8 +133,9 @@ const packetData = new Float32Array(pk);
 /* ---------- gl helpers ---------- */
 const HEAD = `#version 300 es
 precision highp float;
-uniform mat4 uVP; uniform vec3 uCam; uniform float uT, uFogD, uSweep; uniform vec3 uPal[5]; uniform vec3 uFog;
+uniform mat4 uVP; uniform vec3 uCam; uniform float uT, uFogD, uSweep; uniform vec3 uPal[6]; uniform vec3 uFog; uniform vec4 uAlert;
 float h1(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float vnz(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h1(i),h1(i+vec2(1.,0.)),f.x),mix(h1(i+vec2(0.,1.)),h1(i+1.),f.x),f.y);}
 `;
 function prog(vs, fs) {
   const p = gl.createProgram();
@@ -136,6 +162,7 @@ void main(){
   float y=d.y, az=atan(d.z,d.x);
   vec3 col=mix(uFog,vec3(.004,.005,.014),pow(clamp(y,0.,1.),.42));
   col+=vec3(.0,.06,.07)*exp(-abs(y-.015)*30.);
+  col+=vec3(.05,.02,.07)*vnz(vec2(az*3.,y*9.)+vec2(uT*.01,0.))*smoothstep(.0,.15,y)*smoothstep(.6,.2,y);
   vec2 sp=vec2(az*130.,y*190.); vec2 ci=floor(sp); float hh=h1(ci); vec2 fp=fract(sp)-.5;
   col+=vec3(.8,.9,1.)*step(.986,hh)*smoothstep(.13,0.,length(fp))*smoothstep(.06,.35,y)*(.55+.45*sin(uT*1.7+hh*90.))*.9;
   float band=exp(-pow((y-.27-.07*sin(az*5.+uT*.05))*8.,2.));
@@ -147,18 +174,25 @@ void main(){
 const pGround = prog(`
 layout(location=0) in vec2 aP; out vec3 vW;
 void main(){vW=vec3(aP.x,0.,aP.y);gl_Position=uVP*vec4(vW,1.);}`, `
-in vec3 vW; out vec4 o;
+in vec3 vW; uniform sampler2D uRefl; uniform vec2 uRes; uniform float uRain; out vec4 o;
 float lane(float f,float c){return exp(-pow((f-c)*5.,2.));}
+vec2 ripple(vec2 p){
+  vec2 q=p*1.3, c=floor(q), f=fract(q)-.5;
+  float h=h1(c); vec2 off=(vec2(h1(c+3.1),h1(c+7.7))-.5)*.4;
+  float ph=fract(uT*1.1+h);
+  vec2 d=f-off; float r=length(d), x=r-ph*.45;
+  return d/(r+1e-3)*sin(x*55.)*exp(-x*x*80.)*(1.-ph);
+}
 void main(){
   vec2 p=vW.xz; vec2 c=floor(p/4.); vec2 f=p-c*4.;
   float inCity=step(abs(p.x),160.)*step(abs(p.y),160.);
   bool sx=(mod(c.x,4.)<.5||c.x==5.)&&inCity>0.;
   bool sz=(mod(c.y,4.)<.5||c.y==-7.)&&inCity>0.;
-  vec3 col=vec3(.011,.012,.02);
+  vec3 col=vec3(.009,.01,.017);
   float dist=length(vW-uCam);
   vec2 g=abs(fract(p/4.+.5)-.5)*4.; float gm=min(g.x,g.y); float fw=fwidth(gm);
-  col+=vec3(.05,.08,.16)*(1.-smoothstep(0.,fw*1.5+.03,gm))*.55*exp(-dist*.004);
-  if(sx||sz) col+=vec3(.01,.011,.017);
+  col+=vec3(.05,.08,.16)*(1.-smoothstep(0.,fw*1.5+.03,gm))*.45*exp(-dist*.004);
+  if(sx||sz) col+=vec3(.008,.009,.014);
   if(sx&&!sz){
     float k=h1(vec2(c.x,7.));
     float u1=p.y*.12-uT*(1.1+k*.6)+k*9., u2=-p.y*.12-uT*(.9+k*.5)+k*5.;
@@ -171,6 +205,15 @@ void main(){
     col+=vec3(1.,.82,.55)*lane(f.y,2.85)*smoothstep(.72,1.,fract(u1))*step(.5,h1(vec2(floor(u1),c.y)))*1.6;
     col+=vec3(1.,.08,.1)*lane(f.y,1.15)*smoothstep(.72,1.,fract(u2))*step(.5,h1(vec2(floor(u2),c.y+3.)))*1.3;
   }
+  // wet asphalt: blurred, rain-rippled mirror image of the city
+  vec2 rp=ripple(p)*exp(-dist*.035)*uRain;
+  float wet=(sx||sz?.8:.5)*(.5+.5*smoothstep(.3,.7,vnz(p*.07)));
+  vec3 V=normalize(uCam-vW); float fres=.35+.65*pow(1.-max(V.y,0.),2.);
+  vec2 suv=gl_FragCoord.xy/uRes+rp*.014;
+  vec2 j=vec2(1.5,2.5)/uRes;
+  vec3 refl=(texture(uRefl,suv).rgb*2.+texture(uRefl,suv+j).rgb+texture(uRefl,suv-j).rgb+texture(uRefl,suv+vec2(j.x,-j.y)*1.7).rgb)*.2;
+  col+=refl*wet*fres*1.6;
+  col+=vec3(.45,.55,.8)*length(rp)*.1;
   float r=length(p), ang=atan(p.y,p.x);
   float dA=mod(uSweep-ang,6.28318);
   col+=uPal[0]*exp(-dA*4.)*.07*smoothstep(190.,0.,r);
@@ -178,6 +221,11 @@ void main(){
   col+=uPal[1]*.06*(1.-smoothstep(0.,.12+fwidth(r)*1.5,rr))*smoothstep(200.,30.,r);
   col+=uPal[0]*exp(-abs(r-mod(uT*28.,230.))*.5)*.22*smoothstep(230.,0.,r);
   col+=uPal[0]*.1*exp(-r*.12);
+  if(uAlert.w>0.){
+    float a=uAlert.z, rd=length(p-uAlert.xy);
+    if(a>1.2&&a<4.6){ float pr=fract(a*1.3)*18.; col+=uPal[5]*exp(-abs(rd-pr)*1.4)*(1.-pr/18.)*1.2; col+=uPal[5]*.3*exp(-rd*.2)*(.6+.4*sin(a*14.)); }
+    if(a>4.6){ float sr=(a-4.6)*75.; col+=uPal[0]*exp(-abs(rd-sr)*.5)*1.5*smoothstep(9.,5.,a); }
+  }
   float fog=1.-exp(-dist*uFogD);
   o=vec4(mix(col,uFog,fog),1.);
 }`);
@@ -236,6 +284,10 @@ void main(){
   float dA=mod(uSweep-ang,6.28318);
   float sw=exp(-dA*5.)*smoothstep(190.,20.,length(vC));
   col+=uPal[0]*sw*(edge*1.6+.06);
+  if(uAlert.w>0.&&distance(vC,uAlert.xy)<.01&&uAlert.z>1.2&&uAlert.z<4.8){
+    float bl=.55+.45*step(.5,fract(uAlert.z*3.));
+    col=col*.45+uPal[5]*((edge*3.+halo*2.)*bl+.06+exp(-abs(fract(hn*2.-uAlert.z*.9)-.5)*20.)*.8);
+  }
   if(vProof>0.){
     float age=uT-vProof, sc=smoothstep(0.,1.2,age);
     col=mix(col,col*.55+uPal[0]*.1,sc);
@@ -248,6 +300,15 @@ void main(){
 const ARC = `layout(location=0) in vec3 iA; layout(location=1) in vec3 iB; layout(location=2) in vec4 iP;
 out float vA; out float vS; out vec3 vC;
 vec3 arc(float s){vec3 p=mix(iA,iB,s);p.y+=sin(3.14159*s)*iP.w;return p;}`;
+const RIBBON = `
+  float e=float(gl_VertexID>>1), side=float(gl_VertexID&1)*2.-1.;
+  vec3 p=arc(max(s-e*L,0.));
+  vec3 t=normalize(arc(min(s,.998)+.002)-arc(max(s-L,0.))+1e-5);
+  float dist=length(p-uCam);
+  vec3 r=normalize(cross(t,normalize(p-uCam))+1e-5);
+  p+=r*side*(W0+dist*.0022);
+  vS=side; vC=uPal[int(iP.z+.5)];
+  gl_Position=uVP*vec4(p,1.);`;
 const pLines = prog(ARC + `
 void main(){
   float s=(float(gl_VertexID>>1)+float(gl_VertexID&1))/24.;
@@ -257,18 +318,19 @@ void main(){
 }`, `in float vA; in float vS; in vec3 vC; out vec4 o; void main(){o=vec4(vC*vA,1.);}`);
 const pPk = prog(ARC + `
 void main(){
-  float e=float(gl_VertexID>>1), side=float(gl_VertexID&1)*2.-1.;
-  float s=fract(uT*iP.x+iP.y);
-  float L=clamp(5./(length(iB-iA)+iP.w),.015,.2);
-  vec3 p=arc(max(s-e*L,0.));
-  vec3 t=normalize(arc(min(s,.998)+.002)-arc(max(s-L,0.))+1e-5);
-  float dist=length(p-uCam);
-  vec3 r=normalize(cross(t,normalize(p-uCam))+1e-5);
-  p+=r*side*(.13+dist*.0022);
-  vS=side; vC=uPal[int(iP.z+.5)];
+  float s=fract(uT*iP.x+iP.y), L=clamp(5./(length(iB-iA)+iP.w),.015,.2), W0=.13;
+  ${RIBBON}
   vA=(1.-e)*smoothstep(0.,.04,s)*smoothstep(1.,.96,s)*exp(-dist*uFogD*1.1);
-  gl_Position=uVP*vec4(p,1.);
 }`, `in float vA; in float vS; in vec3 vC; out vec4 o; void main(){o=vec4(vC*vA*vA*(1.-vS*vS)*3.2,1.);}`);
+// attack traffic: one-shot arcs that converge on a single host
+const pAtk = prog(ARC + `
+uniform float uAge;
+void main(){
+  float s0=uAge*iP.x-iP.y, s=clamp(s0,0.,1.), L=clamp(12./(length(iB-iA)+iP.w),.04,.3), W0=.3;
+  ${RIBBON}
+  float fade=iP.z>4.5?1.-smoothstep(4.6,5.1,uAge):1.;
+  vA=(1.-e)*step(0.,s0)*step(s0,1.)*fade*exp(-dist*uFogD*.8);
+}`, `in float vA; in float vS; in vec3 vC; out vec4 o; void main(){o=vec4(vC*vA*(1.-vS*vS)*6.,1.);}`);
 
 const pBeam = prog(`
 layout(location=0) in vec4 iBm; out float vS; out float vV; out float vAge; out float vF;
@@ -287,6 +349,20 @@ void main(){
   o=vec4(uPal[0]*a*I*vF,1.);
 }`);
 
+const pRain = prog(`
+uniform float uRain; out float vA;
+void main(){
+  float id=float(gl_InstanceID);
+  vec3 r=vec3(h1(vec2(id,1.3)),h1(vec2(id,2.7)),h1(vec2(id,4.1)));
+  vec3 box=vec3(70.,46.,70.);
+  vec3 vel=vec3(4.,-34.,1.5)*(.8+.4*r.x);
+  vec3 p=mod(r*box+vel*uT-uCam+box*.5,box)-box*.5+uCam;
+  if(gl_VertexID==1) p-=vel*.03;
+  float d=length(p-uCam);
+  vA=uRain*.2*smoothstep(36.,5.,d)*smoothstep(.6,2.5,d)*step(0.,p.y);
+  gl_Position=uVP*vec4(p,1.);
+}`, `in float vA; out vec4 o; void main(){o=vec4(vec3(.55,.65,.85)*vA,1.);}`);
+
 const pBright = prog(FS_TRI, `
 in vec2 vUv; uniform sampler2D uTex; uniform vec2 uTx; uniform float uThr; out vec4 o;
 void main(){
@@ -303,11 +379,12 @@ void main(){
   o=vec4(c,1.);
 }`);
 const pComp = prog(FS_TRI, `
-in vec2 vUv; uniform sampler2D uS, uB1, uB2; uniform float uGrain; out vec4 o;
+in vec2 vUv; uniform sampler2D uS, uB1, uB2; uniform float uGrain, uAlarm; out vec4 o;
 void main(){
   vec2 d=vUv-.5; float r2=dot(d,d);
   vec3 c=vec3(texture(uS,vUv-d*r2*.012).r,texture(uS,vUv).g,texture(uS,vUv+d*r2*.012).b);
   c+=texture(uB1,vUv).rgb*.85+texture(uB2,vUv).rgb*.75;
+  c+=uPal[5]*uAlarm*smoothstep(.06,.5,r2)*.5;
   c=1.-exp(-c*1.55);
   c*=1.-r2*.95;
   c+=(h1(gl_FragCoord.xy+fract(uT*7.)*91.)-.5)*.03*uGrain;
@@ -340,8 +417,10 @@ const proofBuf = buf(proof, gl.DYNAMIC_DRAW); attr(5, 1, 4, 0, 1);
 const vaoG = gl.createVertexArray(); gl.bindVertexArray(vaoG);
 const S = 2400; buf(new Float32Array([-S, -S, S, S, S, -S, -S, -S, -S, S, S, S])); attr(0, 2, 8, 0);
 
-const mkArcVao = data => { const v = gl.createVertexArray(); gl.bindVertexArray(v); buf(data); attr(0, 3, 40, 0, 1); attr(1, 3, 40, 12, 1); attr(2, 4, 40, 24, 1); return v; };
-const vaoL = mkArcVao(routeData), vaoP = mkArcVao(packetData);
+const mkArcVao = (data, usage) => { const v = gl.createVertexArray(); gl.bindVertexArray(v); const b = buf(data, usage); attr(0, 3, 40, 0, 1); attr(1, 3, 40, 12, 1); attr(2, 4, 40, 24, 1); return [v, b]; };
+const [vaoL] = mkArcVao(routeData), [vaoP] = mkArcVao(packetData);
+const MAXATK = 64; let nAtk = 0;
+const [vaoA, atkBuf] = mkArcVao(new Float32Array(MAXATK * 10), gl.DYNAMIC_DRAW);
 const MAXBEAM = 160, beams = new Float32Array(MAXBEAM * 4); let nBeam = 0;
 const vaoBm = gl.createVertexArray(); gl.bindVertexArray(vaoBm);
 const beamBuf = buf(beams, gl.DYNAMIC_DRAW); attr(0, 4, 16, 0, 1);
@@ -367,7 +446,7 @@ function resize() {
   cv.width = W; cv.height = H;
   if (FB) Object.values(FB).forEach(free);
   const q = (k) => [Math.max(1, W >> k), Math.max(1, H >> k)];
-  FB = {s: target(W, H, true), a1: target(...q(2)), a2: target(...q(2)), b1: target(...q(3)), b2: target(...q(3))};
+  FB = {s: target(W, H, true), m: target(...q(1), true), a1: target(...q(2)), a2: target(...q(2)), b1: target(...q(3)), b2: target(...q(3))};
 }
 addEventListener('resize', resize); resize();
 
@@ -377,7 +456,8 @@ const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const norm = a => mul(a, 1 / (Math.hypot(...a) || 1));
+const Hyp = a => Math.hypot(...a);
+const norm = a => mul(a, 1 / (Hyp(a) || 1));
 const lerp3 = (a, b, t) => add(a, mul(sub(b, a), t));
 function persp(fy, a, n, f) { const t = 1 / Math.tan(fy / 2), nf = 1 / (n - f); return [t / a, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) * nf, -1, 0, 0, 2 * f * n * nf, 0]; }
 function look(e, c) { const z = norm(sub(e, c)), x = norm(cross([0, 1, 0], z)), y = cross(z, x); return [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, e), -dot(y, e), -dot(z, e), 1]; }
@@ -392,14 +472,15 @@ function inv(m) {
     (a10 * b10 - a11 * b08 + a13 * b06) * d, (a01 * b08 - a00 * b10 - a03 * b06) * d, (a30 * b04 - a31 * b02 + a33 * b00) * d, (a21 * b02 - a20 * b04 - a23 * b00) * d,
     (a11 * b07 - a10 * b09 - a12 * b06) * d, (a00 * b09 - a01 * b07 + a02 * b06) * d, (a31 * b01 - a30 * b03 - a32 * b00) * d, (a20 * b03 - a21 * b01 + a22 * b00) * d];
 }
+const MIRROR = [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
-/* ---------- cinematic tour (arc-length parameterised Catmull-Rom loop) ---------- */
+/* ---------- cinematic tour (arc-length parameterised Catmull-Rom loop, checked clear of every building) ---------- */
 const K = [[-150, 70, -175], [20, 58, -185], [20, 34, -160], [20, 14, -125], [20, 5, -70], [20, 4.5, 0], [20, 5, 60], [20, 12, 110], [20, 24, 150],
   [70, 48, 185], [165, 70, 70], [120, 74, -40], [40, 108, -55], [-40, 86, 15], [-120, 72, 50], [-185, 70, -40]];
 const cr = (p0, p1, p2, p3, t) => { const t2 = t * t, t3 = t2 * t; return [0, 1, 2].map(i => .5 * (2 * p1[i] + (-p0[i] + p2[i]) * t + (2 * p0[i] - 5 * p1[i] + 4 * p2[i] - p3[i]) * t2 + (-p0[i] + 3 * p1[i] - 3 * p2[i] + p3[i]) * t3)); };
 const rawPath = u => { const n = K.length, i = Math.floor(u) % n, t = u - Math.floor(u); return cr(K[(i - 1 + n) % n], K[i], K[(i + 1) % n], K[(i + 2) % n], t); };
 const LUT = [0]; const STEPS = 4000;
-{ let prev = rawPath(0), acc = 0; for (let k = 1; k <= STEPS; k++) { const p = rawPath(k / STEPS * K.length); acc += Math.hypot(...sub(p, prev)); LUT.push(acc); prev = p; } }
+{ let prev = rawPath(0), acc = 0; for (let k = 1; k <= STEPS; k++) { const p = rawPath(k / STEPS * K.length); acc += Hyp(sub(p, prev)); LUT.push(acc); prev = p; } }
 const PATHLEN = LUT[STEPS];
 function pathAt(s) {
   s = ((s % PATHLEN) + PATHLEN) % PATHLEN;
@@ -420,6 +501,7 @@ function tourPose(s) {
   return {pos: p, fwd: norm(f)};
 }
 const keys = new Set();
+const bm = $('bm'), bs = $('bs'), ba = $('ba');
 function toFree() {
   if (cam.mode === 'free') return;
   cam.mode = 'free'; cam.yaw = Math.atan2(cam.fwd[2], cam.fwd[0]); cam.pitch = Math.asin(Math.max(-1, Math.min(1, cam.fwd[1]))); cam.vel = [0, 0, 0];
@@ -428,8 +510,7 @@ function toFree() {
 function toTour() {
   if (cam.mode === 'tour') return;
   cam.from = {pos: cam.pos.slice(), fwd: cam.fwd.slice()}; cam.blend = 0; cam.mode = 'tour';
-  // resume the tour from the closest point of the path
-  let best = 0, bd = 1e9; for (let s = 0; s < PATHLEN; s += 4) { const d = Math.hypot(...sub(pathAt(s), cam.pos)); if (d < bd) { bd = d; best = s; } }
+  let best = 0, bd = 1e9; for (let s = 0; s < PATHLEN; s += 4) { const d = Hyp(sub(pathAt(s), cam.pos)); if (d < bd) { bd = d; best = s; } }
   cam.s = best; bm.textContent = 'tour'; bm.classList.remove('on');
 }
 function collide(p) {
@@ -446,6 +527,7 @@ function collide(p) {
   }
   p[0] = Math.max(-900, Math.min(900, p[0])); p[2] = Math.max(-900, Math.min(900, p[2])); p[1] = Math.min(p[1], 400);
 }
+let touchFwd = false;
 function updateCam(dt) {
   if (cam.mode === 'tour') {
     cam.s += TOUR_SPEED * dt;
@@ -468,33 +550,42 @@ function updateCam(dt) {
   if (k('KeyE') || k('Space')) mv[1] += 1;
   if (k('KeyQ') || k('ControlLeft')) mv[1] -= 1;
   const sp = 22 * cam.speed * (k('ShiftLeft') || k('ShiftRight') ? 3 : 1);
-  const target = mul(norm(mv), Hyp(mv) > 0 ? sp : 0);
-  cam.vel = lerp3(cam.vel, target, 1 - Math.exp(-dt * 5));
+  cam.vel = lerp3(cam.vel, mul(norm(mv), Hyp(mv) > 0 ? sp : 0), 1 - Math.exp(-dt * 5));
   cam.pos = add(cam.pos, mul(cam.vel, dt));
   collide(cam.pos);
 }
-const Hyp = a => Math.hypot(...a);
+
+/* ---------- labels: the evidence ladder ---------- */
+const labels = [];
+const STEPS_SCAN = [['L0', 'OBSERVED', 'l0'], ['L1', 'SUSPECTED', 'l1'], ['L2', 'REPRODUCED', 'l2'], ['L3', 'VERIFIED ✓', '']];
+const STEPS_ATK = [['L0', '⚠ ANOMALY', 'atk'], ['L1', '⚠ SUSPECTED INTRUSION', 'atk'], ['L2', '⚠ REPRODUCED', 'atk'], ['L3', 'INTRUSION BLOCKED ✓', '']];
+const ipOf = k => { const b = B[k]; return k === SP ? '10.0.0.1 · core' : `10.${b.col + 1}.${b.i + N}.${b.j + N}`; };
+const detOf = k => DET[(k * 7919) % DET.length];
+function addLabel(k, steps, times, life, tail) {
+  const el = document.createElement('div'); el.className = 'lab'; document.body.appendChild(el);
+  labels.push({el, k, t0: T, steps, times, life, tail, step: -1});
+  while (labels.length > 7) labels.shift().el.remove();
+}
 
 /* ---------- scanning ---------- */
-const labels = [];
-const LADDER = [['L0', 'OBSERVED', 'l0'], ['L1', 'SUSPECTED', 'l1'], ['L2', 'REPRODUCED', 'l2'], ['L3', 'VERIFIED ✓', '']];
-let proofs = 0;
-const pcEl = document.getElementById('pc');
-function scan(k) {
+let proofs = 0, blocked = 0;
+function prove(k) {
+  if (proof[k] >= 0) return;
   const b = B[k];
-  if (proof[k] < 0) {
-    proof[k] = T; gl.bindBuffer(gl.ARRAY_BUFFER, proofBuf); gl.bufferSubData(gl.ARRAY_BUFFER, k * 4, new Float32Array([T]));
-    proofs++; pcEl.textContent = proofs;
-    if (nBeam >= MAXBEAM) { beams.copyWithin(0, 4); nBeam--; }
-    beams.set([b.x, b.h, b.z, T], nBeam * 4); nBeam++;
-    gl.bindBuffer(gl.ARRAY_BUFFER, beamBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, beams.subarray(0, nBeam * 4));
-  }
-  const el = document.createElement('div'); el.className = 'lab'; document.body.appendChild(el);
-  const ip = k === SP ? '10.0.0.1 · core' : `10.${b.col + 1}.${b.i + N}.${b.j + N}`;
-  labels.push({el, k, t0: T, ip, step: -1});
-  while (labels.length > 7) labels.shift().el.remove();
+  proof[k] = T; gl.bindBuffer(gl.ARRAY_BUFFER, proofBuf); gl.bufferSubData(gl.ARRAY_BUFFER, k * 4, new Float32Array([T]));
+  proofs++; $('pc').textContent = proofs;
+  if (nBeam >= MAXBEAM) { beams.copyWithin(0, 4); nBeam--; }
+  beams.set([b.x, b.h, b.z, T], nBeam * 4); nBeam++;
+  gl.bindBuffer(gl.ARRAY_BUFFER, beamBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, beams.subarray(0, nBeam * 4));
+}
+function scan(k) {
+  const fresh = proof[k] < 0;
+  const [pr, cve, name] = detOf(k);
+  addLabel(k, STEPS_SCAN, [0, .4, .8, 1.2], 5, [ipOf(k), `${cve} · ${name}`]);
+  pendingProof.push([k, T + 1.2, fresh, pr, cve, name]);
   audio.ping(0);
 }
+const pendingProof = [];
 function pick(px, py) {
   const r = cv.getBoundingClientRect();
   const nx = (px - r.left) / r.width * 2 - 1, ny = 1 - (py - r.top) / r.height * 2;
@@ -510,17 +601,42 @@ function pick(px, py) {
   }
   return -1;
 }
-let nextAuto = 3;
-function autoScan() {
-  // the tour scans a building ahead of the camera every few seconds
+function bestAhead(dMin, dMax, minDot, minH) {
   let best = -1, bs = -1;
   for (let k = 0; k < B.length; k++) {
-    const b = B[k]; if (proof[k] >= 0 || b.h < 10) continue;
-    const v = sub([b.x, b.h * .8, b.z], cam.pos), d = Hyp(v); if (d < 25 || d > 110) continue;
-    const a = dot(norm(v), cam.fwd); if (a < .9) continue;
-    const s = a * 2 - d / 110 + rnd() * .3; if (s > bs) { bs = s; best = k; }
+    const b = B[k]; if (proof[k] >= 0 || b.h < minH || k === SP) continue;
+    const v = sub([b.x, b.h * .8, b.z], cam.pos), d = Hyp(v); if (d < dMin || d > dMax) continue;
+    const a = dot(norm(v), cam.fwd); if (a < minDot) continue;
+    const s = a * 2 - d / dMax + rnd() * .3; if (s > bs) { bs = s; best = k; }
   }
-  if (best >= 0) scan(best);
+  return best;
+}
+
+/* ---------- intrusion: red traffic converges on one host, the city catches it ---------- */
+let atk = null;
+function launchAttack(k) {
+  if (k == null || k < 0) k = bestAhead(40, 140, .93, 12);
+  if (k < 0) k = bestAhead(20, 220, .8, 6);
+  if (k < 0 || atk) return;
+  const b = B[k], d = [];
+  for (let n = 0; n < 46; n++) {
+    const a = rnd() * Math.PI * 2, R = 190 + rnd() * 70, src = [Math.cos(a) * R, 15 + rnd() * 50, Math.sin(a) * R];
+    const dist = Math.hypot(src[0] - b.x, src[2] - b.z), dur = 2.4 + rnd() * 1.7, delay = rnd() * 1.1;
+    d.push(...src, b.x, b.h + .3, b.z, 1 / dur, delay / dur, 5, dist * .18);
+  }
+  const sp = B[SP], dist = Math.hypot(b.x, b.z);
+  for (let n = 0; n < 16; n++) { const dur = .8 + rnd() * .4, delay = 3.3 + rnd() * 1.1; d.push(0, sp.h + .3, 0, b.x, b.h + .3, b.z, 1 / dur, delay / dur, 0, Math.max(8, dist * .25)); }
+  nAtk = d.length / 10;
+  gl.bindBuffer(gl.ARRAY_BUFFER, atkBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(d));
+  atk = {k, t0: T, stage: 0};
+  audio.whoosh();
+}
+function updateAttack() {
+  if (!atk) return;
+  const a = T - atk.t0;
+  if (atk.stage === 0 && a >= 1.2) { atk.stage = 1; addLabel(atk.k, STEPS_ATK, [0, .8, 1.8, 3.4], 7.5, [ipOf(atk.k), 'quarantined by core']); audio.alarm(); }
+  if (atk.stage === 1 && a >= 4.6) { atk.stage = 2; prove(atk.k); blocked++; $('ic').textContent = blocked; audio.ping(3); }
+  if (a > 9.5) atk = null;
 }
 
 /* ---------- audio (all synthesized) ---------- */
@@ -533,39 +649,48 @@ const audio = (() => {
     [55, 82.41, 110.5, 164.8].forEach((f, i) => { const o = ctx.createOscillator(); o.type = i % 2 ? 'triangle' : 'sawtooth'; o.frequency.value = f; o.detune.value = (i - 1.5) * 6; const g = ctx.createGain(); g.gain.value = .045; o.connect(g).connect(lp); o.start(); });
     const lfo = ctx.createOscillator(); lfo.frequency.value = .045; const lg = ctx.createGain(); lg.gain.value = 220; lfo.connect(lg).connect(lp.frequency); lfo.start();
     const nb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), ch = nb.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
-    const ns = ctx.createBufferSource(); ns.buffer = nb; ns.loop = true; const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = .7;
+    const ns = ctx.createBufferSource(); ns.buffer = nb; ns.loop = true;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+    const rg = ctx.createGain(); rg.gain.value = .02; ns.connect(hp).connect(rg).connect(master);
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 500; bp.Q.value = .6;
     const ng = ctx.createGain(); ng.gain.value = .012; ns.connect(bp).connect(ng).connect(master); ns.start();
     delay = ctx.createDelay(); delay.delayTime.value = .32; const fb = ctx.createGain(); fb.gain.value = .38; const wet = ctx.createGain(); wet.gain.value = .5;
     delay.connect(fb).connect(delay); delay.connect(wet).connect(master);
   }
-  function tone(f, t, len, vol, type) {
+  function tone(f, t, len, vol, type, glide) {
     const o = ctx.createOscillator(), g = ctx.createGain(), pn = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 1.5, t + len * .4);
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * (glide || 1.5), t + len * .4);
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + len);
     let n = o.connect(g); if (pn) { pn.pan.value = Math.random() * 1.2 - .6; n = n.connect(pn); }
     n.connect(master); n.connect(delay); o.start(t); o.stop(t + len + .05);
   }
   const NOTES = [392, 440, 523.25, 587.33, 659.25, 783.99];
+  const ok = () => on && ctx;
   return {
     toggle() { if (!ctx) init(); on = !on; if (on) ctx.resume(); master.gain.cancelScheduledValues(ctx.currentTime); master.gain.linearRampToValueAtTime(on ? .55 : 0, ctx.currentTime + .6); return on; },
-    ping(level) { if (!on) return; const t = ctx.currentTime; if (level < 3) tone(NOTES[level], t, .35, .08); else { tone(523.25, t, 1.2, .07); tone(783.99, t + .06, 1.4, .05); tone(1046.5, t + .12, 1.6, .035, 'triangle'); } },
-    blip() { if (!on) return; tone(NOTES[Math.random() * NOTES.length | 0] * 2, ctx.currentTime, .18, .012, 'triangle'); },
+    ping(level) { if (!ok()) return; const t = ctx.currentTime; if (level < 3) tone(NOTES[level], t, .35, .08); else { tone(523.25, t, 1.2, .07); tone(783.99, t + .06, 1.4, .05); tone(1046.5, t + .12, 1.6, .035, 'triangle'); } },
+    blip() { if (!ok()) return; tone(NOTES[Math.random() * NOTES.length | 0] * 2, ctx.currentTime, .18, .012, 'triangle'); },
+    alarm() { if (!ok()) return; const t = ctx.currentTime; for (let i = 0; i < 6; i++) tone(i % 2 ? 233 : 311, t + i * .28, .26, .035, 'square', 1.01); },
+    whoosh() { if (!ok()) return; tone(90, ctx.currentTime, 2.4, .06, 'sawtooth', .6); },
   };
 })();
 
 /* ---------- input ---------- */
-const bm = document.getElementById('bm'), bs = document.getElementById('bs');
+let rainOn = !Q.has('dry'), rain = rainOn ? 1 : 0;
 bm.onclick = () => cam.mode === 'tour' ? toFree() : toTour();
 bs.onclick = () => { const on = audio.toggle(); bs.textContent = 'sound: ' + (on ? 'on' : 'off'); bs.classList.toggle('on', on); };
+ba.onclick = () => launchAttack(cam.mode === 'free' ? pick(innerWidth / 2, innerHeight / 2) : -1);
 addEventListener('keydown', e => {
   if (e.code === 'KeyC') return toTour();
   if (e.code === 'KeyH') return document.body.classList.toggle('hidehud');
   if (e.code === 'KeyM') return bs.onclick();
+  if (e.code === 'KeyX') return ba.onclick();
+  if (e.code === 'KeyR') { rainOn = !rainOn; return; }
   if (/^(Key[WASDQE]|Arrow|Space|Shift|Control)/.test(e.code)) { if (!/Shift|Control/.test(e.code)) toFree(); keys.add(e.code); if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault(); }
 });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
-const ptrs = new Map(); let drag = null, touchFwd = false;
+const ptrs = new Map(); let drag = null;
 cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); drag = {x: e.clientX, y: e.clientY, moved: false}; if (ptrs.size >= 2) { toFree(); touchFwd = true; } });
 cv.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId) || !drag) return;
@@ -581,31 +706,51 @@ cv.addEventListener('wheel', e => { e.preventDefault(); cam.speed = Math.max(.2,
 const FOV = 1.05;
 let T = Q.has('t') ? +Q.get('t') : 0;
 const FOG = [.07, .03, .105], FOGD = .0042;
+let alert4 = [0, 0, 0, 0];
 function common(P, vp) {
   gl.useProgram(P.p);
   gl.uniformMatrix4fv(P.u('uVP'), false, vp); gl.uniform3fv(P.u('uCam'), cam.pos);
   gl.uniform1f(P.u('uT'), T); gl.uniform1f(P.u('uFogD'), FOGD); gl.uniform1f(P.u('uSweep'), (T * .45) % (Math.PI * 2));
-  gl.uniform3fv(P.u('uPal'), PAL); gl.uniform3fv(P.u('uFog'), FOG);
+  gl.uniform3fv(P.u('uPal'), PAL); gl.uniform3fv(P.u('uFog'), FOG); gl.uniform4fv(P.u('uAlert'), alert4);
 }
 function pass(P, out, tex, set) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, out ? out.f : null); gl.viewport(0, 0, out ? out.w : W, out ? out.h : H);
   gl.useProgram(P.p); tex.forEach(([name, t], i) => { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(P.u(name), i); });
   set && set(P); gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
+function drawCity(vp, mirror) {
+  gl.enable(gl.CULL_FACE); gl.frontFace(mirror ? gl.CW : gl.CCW);
+  gl.bindVertexArray(vaoB); common(pBld, vp); gl.drawElementsInstanced(gl.TRIANGLES, 30, gl.UNSIGNED_SHORT, 0, B.length);
+  gl.disable(gl.CULL_FACE); gl.frontFace(gl.CCW);
+  gl.depthMask(false); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  if (!mirror) { gl.bindVertexArray(vaoL); common(pLines, vp); gl.drawArraysInstanced(gl.LINES, 0, 48, routes.length); }
+  gl.bindVertexArray(vaoP); common(pPk, vp); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, routes.length * PER);
+  if (atk) { gl.bindVertexArray(vaoA); common(pAtk, vp); gl.uniform1f(pAtk.u('uAge'), T - atk.t0); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, nAtk); }
+  if (nBeam) { gl.bindVertexArray(vaoBm); common(pBeam, vp); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, nBeam); }
+  if (!mirror && rain > .01) { gl.bindVertexArray(empty); common(pRain, vp); gl.uniform1f(pRain.u('uRain'), rain); gl.drawArraysInstanced(gl.LINES, 0, 2, 2600); }
+  gl.depthMask(true); gl.disable(gl.BLEND);
+}
 function render() {
   const proj = persp(FOV, W / H, .3, 2600), view = look(cam.pos, add(cam.pos, cam.fwd)), vp = mm(proj, view);
+  const aAge = atk ? T - atk.t0 : 0;
+  alert4 = atk ? [B[atk.k].x, B[atk.k].z, aAge, 1] : [0, 0, 0, 0];
+  // 1. mirrored city, half resolution: becomes the wet street reflection
+  gl.bindFramebuffer(gl.FRAMEBUFFER, FB.m.f); gl.viewport(0, 0, FB.m.w, FB.m.h);
+  gl.clearColor(FOG[0] * .5, FOG[1] * .5, FOG[2] * .5, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); drawCity(mm(vp, MIRROR), true);
+  // 2. the real scene
   gl.bindFramebuffer(gl.FRAMEBUFFER, FB.s.f); gl.viewport(0, 0, W, H);
   gl.clearColor(FOG[0], FOG[1], FOG[2], 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.depthMask(true);
+  gl.disable(gl.DEPTH_TEST);
   gl.bindVertexArray(empty); common(pSky, vp); gl.uniformMatrix4fv(pSky.u('uInv'), false, inv(vp)); gl.drawArrays(gl.TRIANGLES, 0, 3);
   gl.enable(gl.DEPTH_TEST);
-  gl.bindVertexArray(vaoG); common(pGround, vp); gl.drawArrays(gl.TRIANGLES, 0, 6);
-  gl.enable(gl.CULL_FACE); gl.bindVertexArray(vaoB); common(pBld, vp); gl.drawElementsInstanced(gl.TRIANGLES, 30, gl.UNSIGNED_SHORT, 0, B.length); gl.disable(gl.CULL_FACE);
-  gl.depthMask(false); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
-  gl.bindVertexArray(vaoL); common(pLines, vp); gl.drawArraysInstanced(gl.LINES, 0, 48, routes.length);
-  gl.bindVertexArray(vaoP); common(pPk, vp); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, routes.length * PER);
-  if (nBeam) { gl.bindVertexArray(vaoBm); common(pBeam, vp); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, nBeam); }
-  gl.depthMask(true); gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+  gl.bindVertexArray(vaoG); common(pGround, vp);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, FB.m.t); gl.uniform1i(pGround.u('uRefl'), 0);
+  gl.uniform2f(pGround.u('uRes'), W, H); gl.uniform1f(pGround.u('uRain'), rain);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  drawCity(vp, false);
+  gl.disable(gl.DEPTH_TEST);
+  // 3. bloom + grade
   gl.bindVertexArray(empty);
   pass(pBright, FB.a1, [['uTex', FB.s.t]], P => { gl.uniform2f(P.u('uTx'), 1 / W, 1 / H); gl.uniform1f(P.u('uThr'), HDR ? .55 : .45); });
   pass(pBlur, FB.a2, [['uTex', FB.a1.t]], P => gl.uniform2f(P.u('uDir'), 1 / FB.a1.w, 0));
@@ -613,28 +758,44 @@ function render() {
   pass(pBright, FB.b1, [['uTex', FB.a1.t]], P => { gl.uniform2f(P.u('uTx'), 1 / FB.a1.w, 1 / FB.a1.h); gl.uniform1f(P.u('uThr'), 0); });
   pass(pBlur, FB.b2, [['uTex', FB.b1.t]], P => gl.uniform2f(P.u('uDir'), 1.6 / FB.b1.w, 0));
   pass(pBlur, FB.b1, [['uTex', FB.b2.t]], P => gl.uniform2f(P.u('uDir'), 0, 1.6 / FB.b1.h));
-  pass(pComp, null, [['uS', FB.s.t], ['uB1', FB.a1.t], ['uB2', FB.b1.t]], P => { gl.uniform1f(P.u('uT'), T); gl.uniform1f(P.u('uGrain'), CAPTURE ? 0 : 1); });
+  const alarm = atk && aAge > 1.2 && aAge < 4.6 ? .5 + .5 * Math.sin(aAge * 9) : 0;
+  pass(pComp, null, [['uS', FB.s.t], ['uB1', FB.a1.t], ['uB2', FB.b1.t]], P => {
+    gl.uniform1f(P.u('uT'), T); gl.uniform1f(P.u('uGrain'), CAPTURE ? 0 : 1); gl.uniform1f(P.u('uAlarm'), alarm); gl.uniform3fv(P.u('uPal'), PAL);
+  });
   return vp;
 }
 function updateLabels(vp) {
   const r = cv.getBoundingClientRect();
   for (let n = labels.length - 1; n >= 0; n--) {
     const L = labels[n], age = T - L.t0;
-    if (age > 5) { L.el.remove(); labels.splice(n, 1); continue; }
-    const step = Math.min(3, Math.floor(age / .4));
-    if (step !== L.step) { const [lv, name, cls] = LADDER[step]; L.el.className = 'lab ' + cls; L.el.innerHTML = `<i>${lv}</i>${name}<s>${L.ip}</s>`; if (L.step >= 0 || step === 0) { if (step > 0) audio.ping(step); } L.step = step; }
-    const b = B[L.k], p = [b.x, b.h + 1.5, b.z, 1];
+    if (age > L.life) { L.el.remove(); labels.splice(n, 1); continue; }
+    let step = 0; while (step < 3 && age >= L.times[step + 1]) step++;
+    if (step !== L.step) {
+      const [lv, name, cls] = L.steps[step];
+      L.el.className = 'lab ' + cls; L.el.innerHTML = `<i>${lv}</i>${name}<s>${step === 3 ? L.tail[1] : L.tail[0]}</s>`;
+      if (step > 0 && L.steps === STEPS_SCAN) audio.ping(step);
+      L.step = step;
+    }
+    const b = B[L.k], p = [b.x, b.h + 1.5, b.z];
     const cx = vp[0] * p[0] + vp[4] * p[1] + vp[8] * p[2] + vp[12], cy = vp[1] * p[0] + vp[5] * p[1] + vp[9] * p[2] + vp[13], cw = vp[3] * p[0] + vp[7] * p[1] + vp[11] * p[2] + vp[15];
     if (cw <= .1) { L.el.style.opacity = 0; continue; }
     const sx = (cx / cw * .5 + .5) * r.width, sy = (1 - (cy / cw * .5 + .5)) * r.height;
-    L.el.style.opacity = Math.min(1, (5 - age) * 1.5);
+    L.el.style.opacity = Math.min(1, (L.life - age) * 1.5);
     L.el.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) translate(-50%,-130%)`;
   }
 }
-let nextBlip = 1;
+let nextBlip = 1, nextAuto = 3, nextAttack = CAPTURE ? Infinity : 8;
 function step(dt) {
   T += dt; updateCam(dt);
-  if (cam.mode === 'tour' && T > nextAuto) { autoScan(); nextAuto = T + 2.2 + rnd() * 1.6; }
+  rain += ((rainOn ? 1 : 0) - rain) * Math.min(1, dt * 1.5);
+  for (let n = pendingProof.length - 1; n >= 0; n--) {
+    const [k, at, fresh, pr, cve, name] = pendingProof[n]; if (T < at) continue;
+    pendingProof.splice(n, 1); prove(k);
+    $('lm').innerHTML = `last match <a href="https://github.com/projectdiscovery/nuclei-templates/pull/${pr}" target="_blank" rel="noopener">${cve} · ${name} ↗</a>`;
+  }
+  if (cam.mode === 'tour' && T > nextAuto) { const k = bestAhead(25, 110, .9, 10); if (k >= 0) scan(k); nextAuto = T + 2.2 + rnd() * 1.6; }
+  if (cam.mode === 'tour' && T > nextAttack && !atk) { launchAttack(-1); nextAttack = T + 20 + rnd() * 8; }
+  updateAttack();
   if (T > nextBlip) { audio.blip(); nextBlip = T + .4 + Math.random() * 1.8; }
   updateLabels(render());
 }
@@ -652,7 +813,9 @@ function frame(now) {
   }
   requestAnimationFrame(frame);
 }
-window.__nw = {inside: (x, y, z) => { const i = Math.floor(x / C) + N, j = Math.floor(z / C) + N; if (i < 0 || j < 0 || i >= G || j >= G) return -1; const k = grid[j * G + i]; if (k < 0) return -1; const b = B[k]; return (Math.abs(x - b.x) < b.w / 2 + 1 && Math.abs(z - b.z) < b.d / 2 + 1 && y < b.h + 1.5) ? k : -1; }, path: pathAt, step, seek: s => { cam.s = s; }, pathLen: PATHLEN, scan, pose: () => ({pos: cam.pos, fwd: cam.fwd, s: cam.s})};
+window.__nw = {step, seek: s => { cam.s = s; }, pathLen: PATHLEN, path: pathAt, attack: launchAttack, scan,
+  inside: (x, y, z) => { const i = Math.floor(x / C) + N, j = Math.floor(z / C) + N; if (i < 0 || j < 0 || i >= G || j >= G) return -1; const k = grid[j * G + i]; if (k < 0) return -1; const b = B[k]; return (Math.abs(x - b.x) < b.w / 2 + 1 && Math.abs(z - b.z) < b.d / 2 + 1 && y < b.h + 1.5) ? k : -1; },
+  pose: () => ({pos: cam.pos, fwd: cam.fwd, s: cam.s})};
 if (CAPTURE) step(0); else requestAnimationFrame(t => { last = t; requestAnimationFrame(frame); });
 })();
 </script>
