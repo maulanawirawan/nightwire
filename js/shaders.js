@@ -325,25 +325,26 @@ void main(){
 // ---------- volumetric-looking light cones under the lamps ----------
 const CONE = [`
 layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNor; layout(location=3) in vec4 iL;
-out vec3 vN; out vec3 vW; out float vT; flat out vec3 vTint;
+out vec3 vN; out vec3 vW; out float vT; flat out vec3 vTint; flat out float vNear;
 void main(){
   vec3 W=iL.xyz+vec3(aPos.x,aPos.y*7.55,aPos.z);
   vN=aNor; vW=W; vT=-aPos.y; vTint=iL.w>.5?vec3(1.,.55,.2):vec3(1.,.88,.74);
+  vNear=smoothstep(7.,16.,length(uCam.xz-iL.xz));
   gl_Position=uVP*vec4(W,1.);
 }`, `
-in vec3 vN; in vec3 vW; in float vT; flat in vec3 vTint; out vec4 o;
+in vec3 vN; in vec3 vW; in float vT; flat in vec3 vTint; flat in float vNear; out vec4 o;
 void main(){
   vec3 V=normalize(vW-uCam);
   float f=pow(abs(dot(normalize(vN),V)),1.4)*pow(1.-vT,1.3)*smoothstep(0.,.08,vT);
   float d=length(vW-uCam);
-  o=vec4(vTint*f*.07*(1.+uRain*1.2)*exp(-d*.006)*smoothstep(1.,6.,d),1.);
+  o=vec4(vTint*f*.07*(1.+uRain*1.2)*exp(-d*.006)*smoothstep(1.,6.,d)*vNear,1.);
 }`];
 
 // ---------- ground: asphalt, markings, sidewalks, puddles, rain ripples, mirror reflections ----------
 const GROUND = [`
 layout(location=0) in vec2 aP; out vec3 vW;
 void main(){vW=vec3(aP.x,0.,aP.y);gl_Position=uVP*vec4(vW,1.);}`, `
-in vec3 vW; uniform sampler2D uRefl; uniform vec2 uRes; out vec4 o;
+in vec3 vW; uniform sampler2D uRefl, uReflB; uniform vec2 uRes; out vec4 o;
 vec2 ripple(vec2 p){
   vec2 q=p*1.6, c=floor(q), f=fract(q)-.5;
   float h=h1(c); vec2 off=(vec2(h1(c+3.1),h1(c+7.7))-.5)*.4;
@@ -408,10 +409,12 @@ void main(){
   float F=.02+.98*pow(1.-max(-V.y,0.),5.);
   vec2 rp=ripple(p)*pud*exp(-dist*.05)*uRain;
   vec2 suv=gl_FragCoord.xy/uRes+rp*.03+(vec2(n1,n2)-.5)*.003;
-  float lod=rough*7.;
-  vec3 refl=vec3(0.);
-  for(int k=-2;k<=2;k++) refl+=textureLod(uRefl,suv+vec2(0.,float(k)*.014*rough),lod).rgb;
-  refl*=.2;
+  vec3 sharp=vec3(0.), soft=vec3(0.);
+  for(int k=-2;k<=2;k++){
+    vec2 o2=vec2(0.,float(k)*.012*rough);
+    sharp+=texture(uRefl,suv+o2*.35).rgb; soft+=texture(uReflB,suv+o2).rgb;
+  }
+  vec3 refl=mix(sharp,soft,clamp(rough*2.4,0.,1.))*.2;
   col+=refl*F*mix(.12,1.,uWet)*(1.-rough*.75)*1.5*ao;
   col+=vec3(.5,.6,.8)*length(rp)*.06;
   o=vec4(applyFog(col,vW),1.);

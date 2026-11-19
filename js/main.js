@@ -173,7 +173,7 @@ function resize() {
   cv.width = W; cv.height = H;
   if (FB) Object.values(FB).forEach(free);
   const q = k => [Math.max(1, W >> k), Math.max(1, H >> k)];
-  FB = {s: target(W, H, true), m: target(...q(1), true, true), a1: target(...q(2)), a2: target(...q(2)), b1: target(...q(3)), b2: target(...q(3)), c1: target(...q(4)), c2: target(...q(4))};
+  FB = {s: target(W, H, true), m: target(...q(1), true), mb1: target(...q(3)), mb2: target(...q(3)), a1: target(...q(2)), a2: target(...q(2)), b1: target(...q(3)), b2: target(...q(3)), c1: target(...q(4)), c2: target(...q(4))};
   FB.ms = msTarget(W, H);
 }
 addEventListener('resize', resize); resize();
@@ -472,7 +472,11 @@ function render() {
   gl.bindFramebuffer(gl.FRAMEBUFFER, FB.m.f); gl.viewport(0, 0, FB.m.w, FB.m.h);
   gl.clearColor(FOGC[0] * .7, FOGC[1] * .7, FOGC[2] * .7, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   drawScene(mm(vp, MIRROR), true);
-  gl.bindTexture(gl.TEXTURE_2D, FB.m.t); gl.generateMipmap(gl.TEXTURE_2D);
+  // blurred copy for rough asphalt (no mipmaps: some drivers return garbage for half-float mip chains)
+  gl.disable(gl.DEPTH_TEST); gl.bindVertexArray(empty);
+  pass(P.BRIGHT, FB.mb1, [['uTex', FB.m.t]], p => { gl.uniform2f(p.u('uTx'), 1 / FB.m.w, 1 / FB.m.h); gl.uniform1f(p.u('uThr'), -1); });
+  pass(P.BLUR, FB.mb2, [['uTex', FB.mb1.t]], p => gl.uniform2f(p.u('uDir'), 1.5 / FB.mb1.w, 0));
+  pass(P.BLUR, FB.mb1, [['uTex', FB.mb2.t]], p => gl.uniform2f(p.u('uDir'), 0, 2.5 / FB.mb1.h));
   // 2. the scene, multisampled when available
   const tgt = FB.ms || FB.s;
   gl.bindFramebuffer(gl.FRAMEBUFFER, tgt.f); gl.viewport(0, 0, W, H);
@@ -481,7 +485,8 @@ function render() {
   gl.bindVertexArray(empty); common(P.SKY, vp); gl.uniformMatrix4fv(P.SKY.u('uInv'), false, inv(vp)); gl.drawArrays(gl.TRIANGLES, 0, 3);
   gl.enable(gl.DEPTH_TEST);
   gl.bindVertexArray(vaoG); common(P.GROUND, vp);
-  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, FB.m.t); gl.uniform1i(P.GROUND.u('uRefl'), 0); gl.uniform2f(P.GROUND.u('uRes'), W, H);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, FB.m.t); gl.uniform1i(P.GROUND.u('uRefl'), 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, FB.mb1.t); gl.uniform1i(P.GROUND.u('uReflB'), 1); gl.uniform2f(P.GROUND.u('uRes'), W, H);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
   drawScene(vp, false);
   drawAdditive(vp);
@@ -557,7 +562,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 $('hc').textContent = B.length.toLocaleString('en');
-window.__nw = {step, seek: s => { cam.s = s; }, pathLen: PATHLEN, path: pathAt, attack: launchAttack, scan, inside: (x, y, z) => insideB([x, y, z], .8),
+window.__nw = {setPose: (p, yaw, pitch) => { toFree(); cam.pos = p.slice(); cam.yaw = yaw; cam.pitch = pitch; }, step, seek: s => { cam.s = s; }, pathLen: PATHLEN, path: pathAt, attack: launchAttack, scan, inside: (x, y, z) => insideB([x, y, z], .8),
   pose: () => ({pos: cam.pos, fwd: cam.fwd, s: cam.s}), stats: () => ({boxes: NBOX, cars: NCAR, signs: NSIGN, cones: NCONE, buildings: B.length, msaa: !!FB.ms, hdr: HDR})};
 if (CAPTURE) step(0); else requestAnimationFrame(t => { last = t; requestAnimationFrame(frame); });
 })();
