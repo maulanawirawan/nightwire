@@ -17,7 +17,14 @@ and watch the city catch an intrusion live.</p>
 
 ### The live version
 
-The browser version is real-time WebGL2, so it's less detailed than the render, but you can fly it, scan buildings and trigger attacks yourself.
+The live version renders the same rainy city in real time, in the browser:
+
+- **Streets:** street-level driving behind a lead car, wet asphalt that mirrors the city, lamp cones in the haze, road markings and zebra crossings.
+- **Buildings and signs:** windows with real room depth (interior mapping), glass that reflects with fresnel, shopfronts, and neon signs with real text.
+- **Traffic:** about 3,500 moving and parked cars.
+- **Camera look:** a filmic ACES tone map, bloom and 4x MSAA.
+
+Fly it, scan buildings, and trigger attacks yourself. The original stylized version is at [classic.html](https://maulanawirawan.github.io/nightwire/classic.html).
 
 <p align="center">
   <a href="https://maulanawirawan.github.io/nightwire/"><img src="media/preview.webp" width="100%" alt="Live WebGL version: diving between rain-wet neon towers while buildings get scanned, then an intrusion gets blocked."/></a>
